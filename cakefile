@@ -1,0 +1,72 @@
+fs 					= require 'fs'
+{exec} 				= require 'child_process'
+
+ansi =
+	red  			: '\x1B[31m'
+	green 			: '\x1B[36m'
+	yellow 			: '\x1B[33m'
+	blue  			: '\x1B[34m'
+	dark_grey  		: '\x1B[1;30m'
+	light_grey  	: '\x1B[1;32m'
+	reset   		: '\x1B[0m'
+
+log = (message, color) ->
+	console.log ansi[color] + message + ansi.reset
+
+jade_ready = stylus_ready = server_ready = coffee_ready = false
+
+option '-m', '--message [COMMIT_MESSAGE]', 'set git commit message'
+
+task 'build', 'build app from src files', (options) ->
+	invoke 'build:server'
+	invoke 'build:coffee'
+	invoke 'build:stylus'
+	invoke 'check_ship', options
+
+task 'check_ship', 'check each build task is finished, then ship code', (options) ->
+	if server_ready
+		invoke 'ship', options
+	else
+		setTimeout (-> invoke 'check_ship'), 10
+		
+task 'build:coffee', 'build src/client.js file from source files', (options) ->
+	exec 'coffee --compile --output www/js src/client/coffee', (err, stdout, stderr) ->
+		err && throw err
+		log 'Build client.js OK!', 'green'
+		client_ready = true
+
+task 'build:server', 'build server js (node)', ->
+	exec 'coffee --compile --output . src/api/coffee', (err, stdout, stderr) ->
+		err && throw err
+		log 'Build server.js OK!', 'green'
+		invoke: 'build:jade'
+		server_ready = true
+
+task 'build:stylus', 'build style.css from src/styl', ->
+	exec 'stylus -c -u nib -o www/css/ src/client/styl/style.styl', (err, stdout, stderr) ->
+		err && throw err
+		log 'Build Stylus OK!', 'green'
+		stylus_ready = true
+
+task 'build:jade', 'build src/html from src/jade', ->
+	exec 'jade -O src/html/ src/client/jade/*', (err, stdout, stderr) ->
+		err && throw err
+		log 'Build Jade OK!', 'green'
+		invoke 'build:handlebars'
+
+task 'build:handlebars', 'build www/js/templates.js from src/html', ->
+	exec 'handlebars src/html/* -f www/js/templates.js', (err, stdout, stderr) ->
+		err && throw err
+		exec 'find src/html/*', (err, stdout, stderr) ->
+			files = stdout.split '\n'
+			remain = files.length
+			for file, i in files then do (file, i) ->
+				fs.unlink file, (err) ->
+					finish() if --remain is 0
+			finish = ->
+				fs.rmdir 'src/html', (err) ->
+					log 'Build Handlebars OK!', 'green'
+					jade_ready = true
+
+task 'ship', 'Commit to git and push to remote server', (options) ->
+	log 'Ship OK!', 'green'
