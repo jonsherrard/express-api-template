@@ -6,7 +6,7 @@ Module dependencies.
 
 
 (function() {
-  var app, express, http, path, routes;
+  var app, compile, express, http, nib, path, routes, stylus;
 
   express = require("express");
 
@@ -16,7 +16,15 @@ Module dependencies.
 
   path = require("path");
 
+  stylus = require("stylus");
+
+  nib = require("nib");
+
   app = express();
+
+  compile = function(str, path) {
+    return stylus(str).set("filename", path).set("compress", true).use(nib());
+  };
 
   app.configure(function() {
     app.set("port", process.env.PORT || 3000);
@@ -27,7 +35,10 @@ Module dependencies.
     app.use(express.bodyParser());
     app.use(express.methodOverride());
     app.use(app.router);
-    app.use(require("stylus").middleware(__dirname + "/www/css"));
+    app.use(stylus.middleware({
+      src: __dirname + "/www/css",
+      compile: compile
+    }));
     return app.use(express["static"](path.join(__dirname, "www")));
   });
 
